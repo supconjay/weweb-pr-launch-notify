@@ -10,10 +10,21 @@
  * It claims every item sitting in `queued`, flips it to `launched`, and sends one
  * digest email per active user via Resend.
  *
- * SAFETY: dry_run defaults to TRUE. A dry run has zero side effects — nothing is
- * flipped, nothing is written, nothing is sent. You must pass `"dry_run": false`
- * explicitly to release a launch. Pass `test_email` to send a real email to a
- * single address instead of the whole audience.
+ * Three modes, in increasing order of consequence:
+ *
+ *   {}                                  dry run (the DEFAULT). Zero side effects:
+ *                                       returns the item list, the audience size
+ *                                       and the rendered HTML. Nothing is sent.
+ *
+ *   { dry_run: false,                   one real email to that address only. The
+ *     test_email: "you@example.com" }   queue is NOT consumed and no item is
+ *                                       flipped, so it is safe to repeat.
+ *
+ *   { dry_run: false }                  the real release: flips every queued item
+ *                                       to launched and emails the whole audience.
+ *
+ * dry_run has to be explicitly false to send anything, so a misconfigured webhook
+ * cannot email the company by accident.
  */
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { Resend } from 'https://esm.sh/resend@2'
@@ -35,7 +46,8 @@ type LaunchItem = {
   notificationId: string
   itemId: string
   title: string
-  description: string | null
+  // launch_notes when set, otherwise description — resolved once at fetch time
+  blurb: string | null
   category: string | null
   projectId: string
   projectName: string
@@ -79,12 +91,12 @@ function digestHtml(items: LaunchItem[], recipientName: string) {
           <table width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 12px 0;border:1px solid #e5e7eb;border-radius:8px;">
             <tr>
               <td style="padding:16px 18px;">
-                <p style="margin:0 0 ${it.description ? '6px' : '0'} 0;font-size:15px;font-weight:650;color:#1a2e44;">
+                <p style="margin:0 0 ${it.blurb ? '6px' : '0'} 0;font-size:15px;font-weight:650;color:#1a2e44;">
                   ${esc(it.title)}
                 </p>
                 ${
-                  it.description
-                    ? `<p style="margin:0;font-size:14px;color:#4b5563;line-height:1.6;">${esc(it.description)}</p>`
+                  it.blurb
+                    ? `<p style="margin:0;font-size:14px;color:#4b5563;line-height:1.6;">${esc(it.blurb)}</p>`
                     : ''
                 }
                 ${
@@ -177,7 +189,7 @@ Deno.serve(async (req) => {
     let queuedQuery = supabase
       .from('product_roadmap_launch_notifications')
       .select(
-        'id, item:product_roadmap_items!inner(id, title, description, category, status, project_id, project:product_roadmap_projects!inner(id, name))',
+        'id, item:product_roadmap_items!inner(id, title, description, launch_notes, category, status, project_id, project:product_roadmap_projects!inner(id, name))',
       )
       .eq('status', 'pending')
       .eq('product_roadmap_items.status', 'queued')
@@ -192,7 +204,9 @@ Deno.serve(async (req) => {
       notificationId: row.id,
       itemId: row.item.id,
       title: row.item.title,
-      description: row.item.description,
+      // Announcement copy wins; the internal description is the safety net so an
+      // item is never announced with an empty body.
+      blurb: row.item.launch_notes || row.item.description || null,
       category: row.item.category,
       projectId: row.item.project.id,
       projectName: row.item.project.name,
@@ -206,16 +220,11 @@ Deno.serve(async (req) => {
     }
 
     // --- 2. who hears about it ------------------------------------------------
-    let recipients: Recipient[]
-    if (testEmail) {
-      recipients = [{ user_id: null, auth_user_id: null, name: 'Test', email: testEmail }]
-    } else {
-      const { data: audience, error: audienceError } = await supabase
-        .from('product_roadmap_launch_recipients')
-        .select('user_id, auth_user_id, name, email')
-      if (audienceError) throw audienceError
-      recipients = (audience ?? []) as Recipient[]
-    }
+    const { data: audience, error: audienceError } = await supabase
+      .from('product_roadmap_launch_recipients')
+      .select('user_id, auth_user_id, name, email')
+    if (audienceError) throw audienceError
+    const recipients: Recipient[] = (audience ?? []) as Recipient[]
 
     const subject =
       items.length === 1
@@ -240,16 +249,45 @@ Deno.serve(async (req) => {
       )
     }
 
+    const resendKey = Deno.env.get('RESEND_API_KEY')
+    if (!resendKey) throw new Error('RESEND_API_KEY is not set on this function.')
+    const resend = new Resend(resendKey)
+
+    // --- 3b. test send: one real email, queue deliberately left untouched ------
+    // Nothing is flipped and nothing is recorded, so you can iterate on the copy
+    // and re-send as many times as you like off the same queued items.
+    if (testEmail) {
+      const { data: testData, error: testError } = await resend.emails.send({
+        from: FROM,
+        reply_to: REPLY_TO,
+        to: testEmail,
+        subject: `[TEST] ${subject}`,
+        html: digestHtml(items, 'there'),
+      })
+      if (testError) throw testError
+
+      return new Response(
+        JSON.stringify({
+          ok: true,
+          dry_run: false,
+          test_mode: true,
+          message: 'Test email sent. Nothing was flipped, written or consumed — the queue is untouched, so you can re-run this.',
+          to: testEmail,
+          resend_id: (testData as any)?.id ?? null,
+          subject: `[TEST] ${subject}`,
+          items: items.length,
+          would_reach_on_release: recipients.length,
+        }),
+        { status: 200, headers: JSON_HEADERS },
+      )
+    }
+
     if (!recipients.length) {
       return new Response(JSON.stringify({ error: 'No eligible recipients found.' }), {
         status: 404,
         headers: JSON_HEADERS,
       })
     }
-
-    const resendKey = Deno.env.get('RESEND_API_KEY')
-    if (!resendKey) throw new Error('RESEND_API_KEY is not set on this function.')
-    const resend = new Resend(resendKey)
 
     // --- 4. open the batch ----------------------------------------------------
     const { data: batch, error: batchError } = await supabase
@@ -369,7 +407,7 @@ Deno.serve(async (req) => {
       JSON.stringify({
         ok: true,
         dry_run: false,
-        test_mode: !!testEmail,
+        test_mode: false,
         batch_id: batch.id,
         items_launched: items.length,
         recipients: recipients.length,

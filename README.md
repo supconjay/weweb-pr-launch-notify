@@ -41,9 +41,16 @@ per item, while still allowing an item to be re-queued after a previous send.
 > **`queued` cannot be removed.** Postgres has no `DROP VALUE` for enums. Undoing
 > it means recreating the type and rewriting every column that uses it.
 
+## Launch notes
+
+Each item has a `launch_notes` column: the announcement copy that goes out in
+the email, kept separate from the internal `description`. Edit it in the item
+drawer on the detail page. When it is empty the digest falls back to
+`description`, so an item is never announced with a blank body.
+
 ## Audience
 
-`product_roadmap_launch_recipients` currently resolves to **304 people**:
+`product_roadmap_launch_recipients` currently resolves to **312 people**:
 
 ```sql
 users.status = 'Active'
@@ -95,12 +102,12 @@ Content-Type: application/json
 | Field | Default | Meaning |
 | --- | --- | --- |
 | `dry_run` | **`true`** | Preview only. No status flips, no writes, no email. Returns the item list, recipient count, and the rendered HTML. |
-| `test_email` | – | Send a real email to this one address instead of the whole audience. |
+| `test_email` | – | Sends one real email to this address. **The queue is NOT consumed and no item is flipped**, so you can iterate on the copy and re-run it freely. |
 | `project_id` | – | Only release queued items on one project. |
 | `triggered_by` | `weweb-deploy` | Free-text label recorded on the batch. |
 
 **`dry_run` defaults to true.** Anything other than an explicit `"dry_run": false`
-is a preview. This is deliberate: a misconfigured webhook cannot email 304 people
+is a preview. This is deliberate: a misconfigured webhook cannot email 312 people
 by accident.
 
 ### Recommended rollout
@@ -120,9 +127,9 @@ curl -sS -X POST "$URL" -H "x-launch-secret: $SECRET" -H "Content-Type: applicat
 curl -sS -X POST "$URL" -H "x-launch-secret: $SECRET" -H "Content-Type: application/json" -d '{"dry_run":false}'
 ```
 
-Note that step 2 **does** flip the queued items to `launched`, since a real send
-implies the deploy happened. Use step 1 as many times as you like; it changes
-nothing.
+Steps 1 and 2 are both repeatable — neither consumes the queue nor flips an item.
+Only step 3 releases: it flips every queued item to `launched` and emails the
+whole audience.
 
 ## WeWeb webhook setup
 
@@ -140,7 +147,7 @@ secret out of any client-side workflow; call it from a WeWeb **backend** workflo
 ## Sending behaviour
 
 Recipients are sent in chunks of 100 through Resend's batch endpoint — 4 calls for
-the current audience rather than 304 individual requests. A chunk that fails marks
+the current audience rather than 312 individual requests. A chunk that fails marks
 just its own recipients `failed`; the rest still go out, and the batch row records
 the split.
 
