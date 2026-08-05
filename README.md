@@ -1,7 +1,8 @@
 # Product Roadmap — Launch Notifications
 
 Backend for the roadmap launch pipeline: a `queued` status, a notification queue,
-and a deploy webhook that releases queued items and emails active users via Resend.
+and a release webhook that flips queued items to launched and emails internal staff
+via Resend.
 
 Everything here is **already applied** to Supabase project `iepfgtjizwzbdgxyzaab`.
 The files are kept for version control and for replaying into another environment.
@@ -50,25 +51,34 @@ drawer on the detail page. When it is empty the digest falls back to
 
 ## Audience
 
-`product_roadmap_launch_recipients` currently resolves to **312 people**:
+Launch emails go to **internal staff only** — an active `@superior-maintenance.com`
+account that has not opted out. That is **43 people** today.
 
 ```sql
-users.status = 'Active'
-  and users.email_notifications_enabled
-  and users.email is not null and users.email <> ''
+u.status = 'Active'
+  and u.email_notifications_enabled
+  and lower(btrim(u.email)) like '%@superior-maintenance.com'
 ```
 
-To narrow it — say, only accounts that can actually log in — redefine the view;
-the edge function needs no change:
+This deliberately excludes the ~270 active vendor and contractor accounts on
+gmail/yahoo/outlook, which the earlier "every active user" definition swept in.
+
+Matching uses `lower(btrim(email))` rather than the raw column: six rows in `users`
+already carry trailing whitespace, and a future `@Superior-Maintenance.com` would
+otherwise be silently dropped. The address is trimmed on the way out too, so Resend
+never receives one with a stray space.
+
+Six internal accounts are currently `Inactive` and so are excluded. To change the
+audience, redefine the view — the edge function needs no change:
 
 ```sql
 create or replace view product_roadmap_launch_recipients as
-  select u.whalesync_postgres_id as user_id, u.user_auth_id as auth_user_id, u.name, u.email
+  select u.whalesync_postgres_id as user_id, u.user_auth_id as auth_user_id,
+         u.name, btrim(u.email) as email
   from users u
   where u.status = 'Active'
-    and u.user_auth_id is not null          -- <- added
     and u.email_notifications_enabled
-    and u.email is not null and u.email <> '';
+    and lower(btrim(u.email)) like '%@superior-maintenance.com';
 ```
 
 Note that `product_roadmap` uuid columns (`owner_id`, `assigned_to`, `user_id`, …)
@@ -107,7 +117,7 @@ Content-Type: application/json
 | `triggered_by` | `weweb-deploy` | Free-text label recorded on the batch. |
 
 **`dry_run` defaults to true.** Anything other than an explicit `"dry_run": false`
-is a preview. This is deliberate: a misconfigured webhook cannot email 312 people
+is a preview. This is deliberate: a misconfigured webhook cannot email the whole company
 by accident.
 
 ### Recommended rollout
@@ -146,10 +156,10 @@ secret out of any client-side workflow; call it from a WeWeb **backend** workflo
 
 ## Sending behaviour
 
-Recipients are sent in chunks of 100 through Resend's batch endpoint — 4 calls for
-the current audience rather than 312 individual requests. A chunk that fails marks
-just its own recipients `failed`; the rest still go out, and the batch row records
-the split.
+Recipients are sent in chunks of 100 through Resend's batch endpoint — a single
+call at the current audience of 43, and it scales without change if that grows.
+A chunk that fails marks just its own recipients `failed`; the rest still go out,
+and the batch row records the split.
 
 Items are flipped to `launched` **before** the send, because by then the deploy
 has already happened — they are live whether or not the email lands. A failed send
