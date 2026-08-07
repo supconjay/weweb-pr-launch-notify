@@ -181,6 +181,15 @@ secret out of any client-side workflow; call it from a WeWeb **backend** workflo
 
 ## Sending behaviour
 
+| | |
+| --- | --- |
+| From | `Superior Contracting & Maintenance <product@updates.superior-maintenance.com>` |
+| Reply-To | `itadmin@superior-maintenance.com` |
+
+The From subdomain is send-only — nothing receives mail at
+`updates.superior-maintenance.com`, so Reply-To has to point at a real monitored
+mailbox on the root domain or replies go nowhere.
+
 Recipients are sent in chunks of 100 through Resend's batch endpoint — a single
 call at the current audience of 43, and it scales without change if that grows.
 A chunk that fails marks just its own recipients `failed`; the rest still go out,

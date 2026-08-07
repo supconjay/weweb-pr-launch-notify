@@ -48,7 +48,9 @@ const CORS = {
 const JSON_HEADERS = { 'Content-Type': 'application/json', ...CORS }
 
 const FROM = 'Superior Contracting & Maintenance <product@updates.superior-maintenance.com>'
-const REPLY_TO = 'product@superior-maintenance.com'
+// Replies go to a monitored mailbox on the root domain, not the send-only
+// subdomain — nothing receives mail at updates.superior-maintenance.com.
+const REPLY_TO = 'itadmin@superior-maintenance.com'
 // Brand red, sampled from the solid fill of the logo file itself rather than
 // eyeballed. The logo PNG is red on TRANSPARENT — it only ever looked navy
 // because the old masthead sat it on a navy cell.
