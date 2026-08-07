@@ -1,14 +1,25 @@
 /**
  * product-roadmap-launch-notify
  *
- * Deploy webhook for the product roadmap. Call it after a WeWeb deploy:
+ * Release notifier for the product roadmap. It claims every item sitting in
+ * `queued`, flips it to `launched`, and sends one digest email per active
+ * internal user via Resend.
  *
- *   POST /functions/v1/product-roadmap-launch-notify
- *   x-launch-secret: <LAUNCH_WEBHOOK_SECRET>
- *   { "dry_run": false }
+ * Two callers, two ways to authenticate:
  *
- * It claims every item sitting in `queued`, flips it to `launched`, and sends one
- * digest email per active user via Resend.
+ *   Deploy webhook, machine to machine — the shared secret header:
+ *     POST /functions/v1/product-roadmap-launch-notify
+ *     x-launch-secret: <LAUNCH_WEBHOOK_SECRET>
+ *     { "dry_run": false }
+ *
+ *   The dashboard button, a signed-in human — their own Supabase session:
+ *     POST /functions/v1/product-roadmap-launch-notify
+ *     Authorization: Bearer <the user's access token>
+ *     { "dry_run": false, "test_email": "jay@superior-maintenance.com" }
+ *
+ *   The caller must be an active @superior-maintenance.com user. This path
+ *   exists so the UI never has to ship LAUNCH_WEBHOOK_SECRET to the browser,
+ *   and it records the real person on the batch rather than "weweb-deploy".
  *
  * Three modes, in increasing order of consequence:
  *
@@ -190,16 +201,66 @@ Deno.serve(async (req) => {
     return new Response(JSON.stringify({ error: 'POST required' }), { status: 405, headers: JSON_HEADERS })
   }
 
-  // --- auth: shared secret, failing closed if it was never configured ---------
-  const secret = Deno.env.get('LAUNCH_WEBHOOK_SECRET')
-  if (!secret) {
+  const supabase = createClient(
+    Deno.env.get('SUPABASE_URL')!,
+    Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
+  )
+
+  // --- auth ------------------------------------------------------------------
+  // Two callers, two threat models:
+  //
+  //   the deploy webhook   machine to machine, no user — shared secret header
+  //   the dashboard button a signed-in human — their own Supabase session
+  //
+  // The button path exists so the UI never has to ship LAUNCH_WEBHOOK_SECRET to
+  // the browser. Note that platform verify_jwt is deliberately OFF: it would
+  // reject the webhook (which carries no Authorization header) and it would
+  // accept the anon key (which is itself a valid JWT), so it is both too strict
+  // and too lax here. The checks below do the real work.
+  const providedSecret = req.headers.get('x-launch-secret')
+  const authHeader = req.headers.get('Authorization') || ''
+  const bearer = authHeader.toLowerCase().startsWith('bearer ') ? authHeader.slice(7).trim() : ''
+  let actor = 'weweb-deploy'
+
+  if (providedSecret) {
+    const secret = Deno.env.get('LAUNCH_WEBHOOK_SECRET')
+    if (!secret) {
+      return new Response(
+        JSON.stringify({ error: 'LAUNCH_WEBHOOK_SECRET is not set on this function; refusing to run.' }),
+        { status: 500, headers: JSON_HEADERS },
+      )
+    }
+    if (providedSecret !== secret) {
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: JSON_HEADERS })
+    }
+  } else if (bearer) {
+    const { data: userData, error: userError } = await supabase.auth.getUser(bearer)
+    const authUser = userData?.user
+    if (userError || !authUser) {
+      return new Response(JSON.stringify({ error: 'Not signed in.' }), { status: 401, headers: JSON_HEADERS })
+    }
+    // A valid session is not enough — the caller has to be an active internal
+    // user, the same bar the audience view applies to recipients.
+    const { data: profile } = await supabase
+      .from('users')
+      .select('name, email, status')
+      .eq('user_auth_id', authUser.id)
+      .maybeSingle()
+
+    const email = String(profile?.email || '').trim().toLowerCase()
+    const internal = email.endsWith('@superior-maintenance.com')
+    if (!profile || profile.status !== 'Active' || !internal) {
+      return new Response(
+        JSON.stringify({ error: 'You are not authorised to send launch notifications.' }),
+        { status: 403, headers: JSON_HEADERS },
+      )
+    }
+    actor = email
+  } else {
     return new Response(
-      JSON.stringify({ error: 'LAUNCH_WEBHOOK_SECRET is not set on this function; refusing to run.' }),
-      { status: 500, headers: JSON_HEADERS },
+      JSON.stringify({ error: 'Unauthorized: send either x-launch-secret or a signed-in Authorization bearer token.' }),
+      { status: 401, headers: JSON_HEADERS },
     )
-  }
-  if (req.headers.get('x-launch-secret') !== secret) {
-    return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: JSON_HEADERS })
   }
 
   try {
@@ -208,12 +269,9 @@ Deno.serve(async (req) => {
     const dryRun = body.dry_run !== false
     const testEmail: string | null = body.test_email || null
     const projectId: string | null = body.project_id || null
-    const triggeredBy: string = body.triggered_by || 'weweb-deploy'
-
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
-    )
+    // Who gets recorded on the batch. A caller-supplied value cannot be trusted
+    // to identify a person, so the resolved actor wins for signed-in callers.
+    const triggeredBy: string = actor !== 'weweb-deploy' ? actor : (body.triggered_by || 'weweb-deploy')
 
     // --- 1. what is waiting to ship ------------------------------------------
     let queuedQuery = supabase

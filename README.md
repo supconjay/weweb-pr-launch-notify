@@ -87,13 +87,17 @@ primary key `whalesync_postgres_id`. The view exposes both.
 
 ## Before it can run
 
-The function is deployed but **fails closed**: with no secret set it returns 500
-and does nothing. To arm it, set the secret in the Supabase dashboard under
-Edge Functions → Secrets:
+`LAUNCH_WEBHOOK_SECRET` is only needed for the **deploy webhook** path. Set it in
+the Supabase dashboard under Edge Functions → Secrets:
 
 ```
 LAUNCH_WEBHOOK_SECRET = <a long random string>
 ```
+
+A call that sends `x-launch-secret` when no secret is configured gets a 500 and
+does nothing — it fails closed rather than falling through to unauthenticated.
+The dashboard button does not use it: it authenticates as the signed-in user, so
+those buttons work without this secret ever being set.
 
 `RESEND_API_KEY` is already set on this project (shared with `send-vendor-campaign`).
 
@@ -105,9 +109,30 @@ verified, but this specific from-address may need adding.
 
 ```
 POST https://iepfgtjizwzbdgxyzaab.supabase.co/functions/v1/product-roadmap-launch-notify
-x-launch-secret: <LAUNCH_WEBHOOK_SECRET>
 Content-Type: application/json
 ```
+
+### Two ways to authenticate
+
+| Caller | Header | Recorded as |
+| --- | --- | --- |
+| Deploy webhook (machine) | `x-launch-secret: <LAUNCH_WEBHOOK_SECRET>` | `triggered_by` from the body, default `weweb-deploy` |
+| Dashboard button (human) | `Authorization: Bearer <the user's Supabase access token>` | the signing-in user's email |
+
+The signed-in path requires an **active `@superior-maintenance.com`** user — the
+same bar the audience view applies to recipients. A valid session alone is not
+enough, and `triggered_by` from the body is ignored so a caller cannot claim to
+be someone else.
+
+It exists so the UI never ships `LAUNCH_WEBHOOK_SECRET` to the browser. A WeWeb
+*frontend* workflow runs in the visitor's browser, so any secret it carries is
+readable in devtools; a session token is the user's own and grants nothing they
+did not already have.
+
+Platform `verify_jwt` is deliberately **off**. It would reject the webhook, which
+carries no `Authorization` header, and it would accept the anon key, which is
+itself a valid JWT — too strict and too lax at once. The checks in the function
+body do the real work.
 
 | Field | Default | Meaning |
 | --- | --- | --- |
