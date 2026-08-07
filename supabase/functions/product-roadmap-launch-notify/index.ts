@@ -104,7 +104,9 @@ function groupByProject(items: LaunchItem[]) {
   return order.map((id) => byProject.get(id)!)
 }
 
-function digestHtml(items: LaunchItem[], recipientName: string) {
+// No per-recipient content: the greeting is generic, so one render serves the
+// whole audience instead of rebuilding the same ~6KB for each of them.
+function digestHtml(items: LaunchItem[]) {
   const groups = groupByProject(items)
   const body = groups
     .map(
@@ -173,7 +175,7 @@ function digestHtml(items: LaunchItem[], recipientName: string) {
         </td></tr>
         <tr><td style="height:3px;background-color:${RED};font-size:0;line-height:0;">&nbsp;</td></tr>
         <tr><td style="padding:26px 32px 0 32px;">
-          <p style="margin:0 0 8px 0;font-size:16px;color:${INK};line-height:1.6;">Hi ${esc(recipientName)},</p>
+          <p style="margin:0 0 8px 0;font-size:16px;color:${INK};line-height:1.6;">Hello Team,</p>
           <p style="margin:0 0 7px 0;font-size:15px;font-weight:600;color:${INK};line-height:1.6;">${esc(lead)}</p>
           <p style="margin:0;font-size:13.5px;color:${MUTED};line-height:1.65;">${esc(SUPRO_BLURB)}</p>
         </td></tr>
@@ -335,7 +337,7 @@ Deno.serve(async (req) => {
           recipients: recipients.length,
           items_preview: items.map((i) => ({ project: i.projectName, title: i.title })),
           sample_recipients: recipients.slice(0, 5).map((r) => r.email),
-          html_preview: digestHtml(items, recipients[0]?.name || 'there'),
+          html_preview: digestHtml(items),
         }),
         { status: 200, headers: JSON_HEADERS },
       )
@@ -354,7 +356,7 @@ Deno.serve(async (req) => {
         reply_to: REPLY_TO,
         to: testEmail,
         subject: `[TEST] ${subject}`,
-        html: digestHtml(items, 'there'),
+        html: digestHtml(items),
       })
       if (testError) throw testError
 
@@ -437,13 +439,16 @@ Deno.serve(async (req) => {
     let sent = 0
     let failed = 0
 
+    // Identical for everyone, so render it once rather than per recipient.
+    const html = digestHtml(items)
+
     for (const group of chunk(recipients, BATCH_SIZE)) {
       const payloads = group.map((r) => ({
         from: FROM,
         reply_to: REPLY_TO,
         to: r.email,
         subject,
-        html: digestHtml(items, r.name || 'there'),
+        html,
       }))
 
       try {
