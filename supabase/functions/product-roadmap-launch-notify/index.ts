@@ -38,11 +38,21 @@ const JSON_HEADERS = { 'Content-Type': 'application/json', ...CORS }
 
 const FROM = 'Superior Contracting & Maintenance <product@updates.superior-maintenance.com>'
 const REPLY_TO = 'product@superior-maintenance.com'
-// Masthead accent, matched to the dashboard's own primary.
-const ACCENT = '#10b981'
-// Web-safe monospace stack. Carries most of the technical feel — no webfont to
-// load, and every client falls back to something sensible.
+// Brand red, sampled from the solid fill of the logo file itself rather than
+// eyeballed. The logo PNG is red on TRANSPARENT — it only ever looked navy
+// because the old masthead sat it on a navy cell.
+const RED = '#d42029'
+const INK = '#1f2937'
+const MUTED = '#6b7280'
+const LOGO = 'https://iepfgtjizwzbdgxyzaab.supabase.co/storage/v1/object/public/avatars/headers/1_Superior_C_M_logo.png'
+// Web-safe monospace stack. Carries the technical feel — no webfont to load, and
+// every client falls back to something sensible.
 const MONO = "'SFMono-Regular',Consolas,'Liberation Mono',Menlo,monospace"
+// Says what the email is about beyond the item list. Recipients outside the
+// product team will not necessarily connect "product update" to Supro.
+const SUPRO_BLURB =
+  'Supro is the internal system behind your jobs, dispatch, vendor and customer workflows. ' +
+  'These changes are already live — sign in again or refresh to pick them up.'
 // Resend's batch endpoint caps at 100 messages per call.
 const BATCH_SIZE = 100
 
@@ -86,26 +96,26 @@ function digestHtml(items: LaunchItem[], recipientName: string) {
   const body = groups
     .map(
       (g) => `
-        <p style="margin:26px 0 10px 0;font-family:${MONO};font-size:11px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:#64748b;">
+        <p style="margin:26px 0 10px 0;font-family:${MONO};font-size:11px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:${RED};">
           // ${esc(g.name)}
         </p>
         ${g.items
           .map(
             (it) => `
-          <table width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 10px 0;background-color:#ffffff;border:1px solid #e2e8f0;border-left:3px solid ${ACCENT};border-radius:6px;">
+          <table width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 10px 0;background-color:#ffffff;border:1px solid #ebeced;border-left:3px solid ${RED};border-radius:6px;">
             <tr>
               <td style="padding:14px 16px;">
-                <p style="margin:0 0 ${it.blurb ? '6px' : '0'} 0;font-size:15px;font-weight:650;color:#0f1b2b;">
+                <p style="margin:0 0 ${it.blurb ? '6px' : '0'} 0;font-size:15px;font-weight:650;color:${INK};">
                   ${esc(it.title)}
                 </p>
                 ${
                   it.blurb
-                    ? `<p style="margin:0;font-size:14px;color:#475569;line-height:1.6;">${esc(it.blurb)}</p>`
+                    ? `<p style="margin:0;font-size:14px;color:${MUTED};line-height:1.6;">${esc(it.blurb)}</p>`
                     : ''
                 }
                 ${
                   it.category
-                    ? `<p style="margin:10px 0 0 0;"><span style="display:inline-block;padding:3px 8px;border:1px solid #cbd5e1;border-radius:4px;font-family:${MONO};font-size:10.5px;font-weight:600;letter-spacing:.05em;color:#475569;">${esc(
+                    ? `<p style="margin:10px 0 0 0;"><span style="display:inline-block;padding:3px 8px;border:1px solid #f0c9cc;border-radius:4px;background-color:#fdf4f5;font-family:${MONO};font-size:10.5px;font-weight:600;letter-spacing:.05em;color:${RED};">${esc(
                         it.category,
                       )}</span></p>`
                     : ''
@@ -121,48 +131,45 @@ function digestHtml(items: LaunchItem[], recipientName: string) {
   const count = items.length
   const lead =
     count === 1
-      ? 'One update just went live.'
-      : `${count} updates just went live.`
+      ? 'One update just went live in the Supro System.'
+      : `${count} updates just went live in the Supro System.`
   const tag = count === 1 ? '1 CHANGE' : `${count} CHANGES`
 
   return `<!DOCTYPE html>
 <html lang="en">
-<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Product Update</title></head>
-<body style="margin:0;padding:0;background-color:#eef2f7;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;">
-  <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#eef2f7;padding:32px 0;">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Supro Update</title></head>
+<body style="margin:0;padding:0;background-color:#f4f4f5;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f4f4f5;padding:32px 0;">
     <tr><td align="center">
       <table width="620" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:8px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.08);">
-        <!-- Masthead. Built from type rather than the banner image: that logo is
-             the contracting mark, it is ~275px tall at this width, and it reads
-             as field services rather than product engineering. -->
-        <tr><td style="background-color:#0f1b2b;padding:16px 28px;">
+        <!-- Masthead. The logo PNG is red on transparent, so it sits on white and
+             the brand reads red-and-white as intended. Scaled to 170px wide
+             (~74px tall) rather than the full 620px, which was ~275px tall. -->
+        <tr><td style="background-color:#ffffff;padding:18px 28px 12px 28px;">
           <table width="100%" cellpadding="0" cellspacing="0">
             <tr>
-              <td style="font-size:15px;font-weight:700;letter-spacing:.2em;color:#ffffff;white-space:nowrap;">
-                <span style="font-family:${MONO};font-weight:700;letter-spacing:0;color:${ACCENT};">&gt;_</span>&nbsp;SUPERIOR
+              <td style="vertical-align:middle;">
+                <img src="${LOGO}" alt="Superior Contracting &amp; Maintenance" width="170" style="display:block;width:170px;max-width:170px;border:0;" />
               </td>
-              <td align="right" style="font-family:${MONO};font-size:10px;font-weight:700;letter-spacing:.13em;color:${ACCENT};white-space:nowrap;">
-                PRODUCT&nbsp;UPDATE
-              </td>
-            </tr>
-            <tr>
-              <td colspan="2" style="padding-top:3px;font-family:${MONO};font-size:10px;letter-spacing:.11em;color:#7c8ba1;">
-                IT&nbsp;&amp;&nbsp;PRODUCT&nbsp;&nbsp;·&nbsp;&nbsp;${tag}
+              <td align="right" style="vertical-align:middle;font-family:${MONO};font-size:10px;font-weight:700;letter-spacing:.13em;color:${RED};white-space:nowrap;line-height:1.7;">
+                SUPRO&nbsp;SYSTEM<br />
+                <span style="font-weight:400;color:#9ca3af;">PRODUCT&nbsp;UPDATE&nbsp;&nbsp;·&nbsp;&nbsp;${tag}</span>
               </td>
             </tr>
           </table>
         </td></tr>
-        <tr><td style="height:3px;background-color:${ACCENT};font-size:0;line-height:0;">&nbsp;</td></tr>
-        <tr><td style="padding:28px 32px 0 32px;">
-          <p style="margin:0 0 6px 0;font-size:16px;color:#334155;line-height:1.6;">Hi ${esc(recipientName)},</p>
-          <p style="margin:0;font-size:15px;color:#64748b;line-height:1.6;">${esc(lead)}</p>
+        <tr><td style="height:3px;background-color:${RED};font-size:0;line-height:0;">&nbsp;</td></tr>
+        <tr><td style="padding:26px 32px 0 32px;">
+          <p style="margin:0 0 8px 0;font-size:16px;color:${INK};line-height:1.6;">Hi ${esc(recipientName)},</p>
+          <p style="margin:0 0 7px 0;font-size:15px;font-weight:600;color:${INK};line-height:1.6;">${esc(lead)}</p>
+          <p style="margin:0;font-size:13.5px;color:${MUTED};line-height:1.65;">${esc(SUPRO_BLURB)}</p>
         </td></tr>
         <tr><td style="padding:4px 32px 30px 32px;">${body}</td></tr>
-        <tr><td style="padding:0 32px;"><hr style="border:none;border-top:1px dashed #d8e0ea;margin:0;" /></td></tr>
-        <tr><td style="padding:22px 32px;background-color:#f8fafc;">
-          <p style="margin:0 0 4px 0;font-size:12.5px;font-weight:600;color:#0f1b2b;">Superior Contracting &amp; Maintenance</p>
-          <p style="margin:0;font-family:${MONO};font-size:11px;color:#64748b;line-height:1.6;">Sent because email notifications are on for your account.</p>
-          <p style="margin:12px 0 0 0;font-family:${MONO};font-size:10px;color:#94a3b8;">© ${new Date().getFullYear()} Superior Contracting &amp; Maintenance</p>
+        <tr><td style="padding:0 32px;"><hr style="border:none;border-top:1px dashed #e3e4e6;margin:0;" /></td></tr>
+        <tr><td style="padding:22px 32px;background-color:#fafafa;">
+          <p style="margin:0 0 4px 0;font-size:12.5px;font-weight:600;color:${INK};">Superior Contracting &amp; Maintenance</p>
+          <p style="margin:0;font-family:${MONO};font-size:11px;color:${MUTED};line-height:1.6;">Sent because email notifications are on for your Supro account.</p>
+          <p style="margin:12px 0 0 0;font-family:${MONO};font-size:10px;color:#9ca3af;">© ${new Date().getFullYear()} Superior Contracting &amp; Maintenance</p>
         </td></tr>
       </table>
     </td></tr>
@@ -249,10 +256,12 @@ Deno.serve(async (req) => {
     if (audienceError) throw audienceError
     const recipients: Recipient[] = (audience ?? []) as Recipient[]
 
+    // Names the system, not just "product" — most recipients are field and office
+    // staff who would not otherwise connect a product update to Supro.
     const subject =
       items.length === 1
-        ? `Product update: ${items[0].title} is live`
-        : `Product update: ${items.length} new features are live`
+        ? `Supro update: ${items[0].title} is live`
+        : `Supro update: ${items.length} new features are live`
 
     // --- 3. dry run: preview only, no writes, no sends ------------------------
     if (dryRun) {
