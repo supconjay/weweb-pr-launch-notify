@@ -38,7 +38,11 @@ const JSON_HEADERS = { 'Content-Type': 'application/json', ...CORS }
 
 const FROM = 'Superior Contracting & Maintenance <product@updates.superior-maintenance.com>'
 const REPLY_TO = 'product@superior-maintenance.com'
-const LOGO = 'https://iepfgtjizwzbdgxyzaab.supabase.co/storage/v1/object/public/avatars/headers/1_Superior_C_M_logo.png'
+// Masthead accent, matched to the dashboard's own primary.
+const ACCENT = '#10b981'
+// Web-safe monospace stack. Carries most of the technical feel — no webfont to
+// load, and every client falls back to something sensible.
+const MONO = "'SFMono-Regular',Consolas,'Liberation Mono',Menlo,monospace"
 // Resend's batch endpoint caps at 100 messages per call.
 const BATCH_SIZE = 100
 
@@ -82,26 +86,26 @@ function digestHtml(items: LaunchItem[], recipientName: string) {
   const body = groups
     .map(
       (g) => `
-        <p style="margin:28px 0 10px 0;font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#8b95a5;">
-          ${esc(g.name)}
+        <p style="margin:26px 0 10px 0;font-family:${MONO};font-size:11px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:#64748b;">
+          // ${esc(g.name)}
         </p>
         ${g.items
           .map(
             (it) => `
-          <table width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 12px 0;border:1px solid #e5e7eb;border-radius:8px;">
+          <table width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 10px 0;background-color:#ffffff;border:1px solid #e2e8f0;border-left:3px solid ${ACCENT};border-radius:6px;">
             <tr>
-              <td style="padding:16px 18px;">
-                <p style="margin:0 0 ${it.blurb ? '6px' : '0'} 0;font-size:15px;font-weight:650;color:#1a2e44;">
+              <td style="padding:14px 16px;">
+                <p style="margin:0 0 ${it.blurb ? '6px' : '0'} 0;font-size:15px;font-weight:650;color:#0f1b2b;">
                   ${esc(it.title)}
                 </p>
                 ${
                   it.blurb
-                    ? `<p style="margin:0;font-size:14px;color:#4b5563;line-height:1.6;">${esc(it.blurb)}</p>`
+                    ? `<p style="margin:0;font-size:14px;color:#475569;line-height:1.6;">${esc(it.blurb)}</p>`
                     : ''
                 }
                 ${
                   it.category
-                    ? `<p style="margin:10px 0 0 0;"><span style="display:inline-block;padding:3px 9px;border-radius:999px;background:#eef2ff;color:#4f46e5;font-size:11px;font-weight:600;">${esc(
+                    ? `<p style="margin:10px 0 0 0;"><span style="display:inline-block;padding:3px 8px;border:1px solid #cbd5e1;border-radius:4px;font-family:${MONO};font-size:10.5px;font-weight:600;letter-spacing:.05em;color:#475569;">${esc(
                         it.category,
                       )}</span></p>`
                     : ''
@@ -119,27 +123,46 @@ function digestHtml(items: LaunchItem[], recipientName: string) {
     count === 1
       ? 'One update just went live.'
       : `${count} updates just went live.`
+  const tag = count === 1 ? '1 CHANGE' : `${count} CHANGES`
 
   return `<!DOCTYPE html>
 <html lang="en">
 <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Product Update</title></head>
-<body style="margin:0;padding:0;background-color:#f4f4f7;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;">
-  <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f4f4f7;padding:40px 0;">
+<body style="margin:0;padding:0;background-color:#eef2f7;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#eef2f7;padding:32px 0;">
     <tr><td align="center">
       <table width="620" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:8px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.08);">
-        <tr><td style="background-color:#1a2e44;padding:0;">
-          <img src="${LOGO}" alt="Superior Contracting &amp; Maintenance" width="620" style="display:block;width:100%;max-width:620px;" />
+        <!-- Masthead. Built from type rather than the banner image: that logo is
+             the contracting mark, it is ~275px tall at this width, and it reads
+             as field services rather than product engineering. -->
+        <tr><td style="background-color:#0f1b2b;padding:16px 28px;">
+          <table width="100%" cellpadding="0" cellspacing="0">
+            <tr>
+              <td style="font-size:15px;font-weight:700;letter-spacing:.2em;color:#ffffff;white-space:nowrap;">
+                <span style="font-family:${MONO};font-weight:700;letter-spacing:0;color:${ACCENT};">&gt;_</span>&nbsp;SUPERIOR
+              </td>
+              <td align="right" style="font-family:${MONO};font-size:10px;font-weight:700;letter-spacing:.13em;color:${ACCENT};white-space:nowrap;">
+                PRODUCT&nbsp;UPDATE
+              </td>
+            </tr>
+            <tr>
+              <td colspan="2" style="padding-top:3px;font-family:${MONO};font-size:10px;letter-spacing:.11em;color:#7c8ba1;">
+                IT&nbsp;&amp;&nbsp;PRODUCT&nbsp;&nbsp;·&nbsp;&nbsp;${tag}
+              </td>
+            </tr>
+          </table>
         </td></tr>
-        <tr><td style="padding:40px 48px 0 48px;">
-          <p style="margin:0 0 6px 0;font-size:16px;color:#374151;line-height:1.6;">Hi ${esc(recipientName)},</p>
-          <p style="margin:0;font-size:15px;color:#6b7280;line-height:1.6;">${esc(lead)}</p>
+        <tr><td style="height:3px;background-color:${ACCENT};font-size:0;line-height:0;">&nbsp;</td></tr>
+        <tr><td style="padding:28px 32px 0 32px;">
+          <p style="margin:0 0 6px 0;font-size:16px;color:#334155;line-height:1.6;">Hi ${esc(recipientName)},</p>
+          <p style="margin:0;font-size:15px;color:#64748b;line-height:1.6;">${esc(lead)}</p>
         </td></tr>
-        <tr><td style="padding:8px 48px 40px 48px;">${body}</td></tr>
-        <tr><td style="padding:0 48px;"><hr style="border:none;border-top:1px solid #e5e7eb;margin:0;" /></td></tr>
-        <tr><td style="padding:32px 48px;background-color:#f9fafb;">
-          <p style="margin:0 0 4px 0;font-size:13px;font-weight:600;color:#1a2e44;">Superior Contracting &amp; Maintenance</p>
-          <p style="margin:0;font-size:12px;color:#6b7280;">You're receiving this because email notifications are on for your account.</p>
-          <p style="margin:16px 0 0 0;font-size:11px;color:#9ca3af;">© ${new Date().getFullYear()} Superior Contracting &amp; Maintenance. All rights reserved.</p>
+        <tr><td style="padding:4px 32px 30px 32px;">${body}</td></tr>
+        <tr><td style="padding:0 32px;"><hr style="border:none;border-top:1px dashed #d8e0ea;margin:0;" /></td></tr>
+        <tr><td style="padding:22px 32px;background-color:#f8fafc;">
+          <p style="margin:0 0 4px 0;font-size:12.5px;font-weight:600;color:#0f1b2b;">Superior Contracting &amp; Maintenance</p>
+          <p style="margin:0;font-family:${MONO};font-size:11px;color:#64748b;line-height:1.6;">Sent because email notifications are on for your account.</p>
+          <p style="margin:12px 0 0 0;font-family:${MONO};font-size:10px;color:#94a3b8;">© ${new Date().getFullYear()} Superior Contracting &amp; Maintenance</p>
         </td></tr>
       </table>
     </td></tr>
